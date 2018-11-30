@@ -4,7 +4,6 @@ from burp import IScanIssue
 from array import array
 
 
-
 class BurpExtender(IBurpExtender, IScannerCheck):
 
     def registerExtenderCallbacks(self, callbacks):
@@ -13,42 +12,39 @@ class BurpExtender(IBurpExtender, IScannerCheck):
         callbacks.setExtensionName("JavaScript Scraper")
         callbacks.registerScannerCheck(self)
 
-        self.grep_file_extensions = ["js", "jsp", "json", ".jspx"]
+        self.grep_file_extensions = ["js", "jsp", "json", "jspx"]
         self.possibleContentTypes = ["application/javascript", "application/ecmascript", "application/jscript", "application/json"]
         self.ichars = ['{', '<']
 
-    def _get_matches(self, response, match):
+    def _get_matches(self, response):
         matches = []
         start = 0
         reslen = len(response)
-        matchlen = len(match)
-        if self.isScript(response) == True:
-        	matches.append(array('i', [start, start + matchlen]))
-	        while start < reslen:
-	            start = self._helpers.indexOf(response, match, False, start, reslen)
-	            if start == -1:
-	                break
-	            start += matchlen
-
+        match = self.isScript(response)
+        print(match)
+    	matchlen = str(len(match))
+    	mlenint = int(matchlen)
+    	print(mlenint)
+    	matches.append(array('i', [start, start + mlenint]))
+        while start < reslen:
+            start = self._helpers.indexOf(response, match, False, start, reslen)
+            if start == -1:
+                break
+            start += mlenint
         return matches
 
     def doPassiveScan(self, baseRequestResponse):
-    	
     	issues = []
-
     	matches = []
-
-    	for ex in self.grep_file_extensions:
-    		matches = self._get_matches(baseRequestResponse.getResponse(), self._helpers.stringToBytes(ex))
-
-    		if len(matches) > 0:
-    			issues.append(CustomScanIssue(
-		            baseRequestResponse.getHttpService(),
-		            self._helpers.analyzeRequest(baseRequestResponse).getUrl(),
-		            [self._callbacks.applyMarkers(baseRequestResponse, None, matches)],
-		            "JavaScript file found",
-		            "The following javascript file was found: " + ex,
-		            "Information"))
+    	matches = self._get_matches(baseRequestResponse.getResponse())
+    	if len(matches) > 0:
+    		issues.append(CustomScanIssue(
+	            baseRequestResponse.getHttpService(),
+	            self._helpers.analyzeRequest(baseRequestResponse).getUrl(),
+	            [self._callbacks.applyMarkers(baseRequestResponse, None, matches)],
+	            "JavaScript file found",
+	            "The following Javascript file was found :",
+	            "Information"))
 
     	if (len(issues) == 0):
     		return None
@@ -75,7 +71,10 @@ class BurpExtender(IBurpExtender, IScannerCheck):
             fileNameSplit = fileName.split(".")
             fileEnding = fileNameSplit[len(fileNameSplit) - 1]
             fileEnding = fileEnding.split("?")[0]
-        return any(fileEnd in fileEnding for fileEnd in self.grep_file_extensions)
+            for fileEnd in fileEnding:
+        		if fileEnd in self.grep_file_extensions:
+        			print("hasScriptFileEnding" + fileEnd)
+        			return fileEnd
 
     def hasScriptContentType(self, response):
         """ Checks for common content types, that could be scripts """
@@ -85,7 +84,10 @@ class BurpExtender(IBurpExtender, IScannerCheck):
         contentTypeL = [x for x in headers if "content-type:" in x.lower()]
         if len(contentTypeL) == 1:
             contentType = contentTypeL[0].lower()
-        return any(content in contentType for content in self.possibleContentTypes)
+        for content in contentType:
+        	if content in self.possibleContentTypes:
+        		print("hasScriptContentType = " + content)
+        		return content
 
     def isScript(self, requestResponse):
         """Determine if the response is a script"""
@@ -96,13 +98,18 @@ class BurpExtender(IBurpExtender, IScannerCheck):
         if not self.hasBody(response):
             return False
         responseInfo = self._helpers.analyzeResponse(response)
-        body = response.tostring()[responseInfo.getBodyOffset():]
-        first_char = body[0:1]
         mimeType = responseInfo.getStatedMimeType().split(';')[0]
         inferredMimeType = responseInfo.getInferredMimeType().split(';')[0]
-        return (first_char not in self.ichars and
-                ("script" in mimeType or "script" in inferredMimeType or
-                 self.hasScriptFileEnding(requestResponse) or self.hasScriptContentType(response)))
+        if "script" in mimeType:
+        	return responseInfo.getStatedMimeType()
+        elif "script" in inferredMimeType:
+        	return responseInfo.getInferredMimeType()
+        elif self.hasScriptFileEnding(requestResponse) is not None:
+        	return self.hasScriptFileEnding(requestResponse)
+        elif self.hasScriptContentType(response) is not None:
+        	return self.hasScriptContentType(response)
+        else:
+        	return False
 
     def hasBody(self, response):
         """
